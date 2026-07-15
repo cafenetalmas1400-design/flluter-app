@@ -47,8 +47,6 @@ jobs:
         run: |
           cp lib/main.dart /tmp/main.dart.backup
           cp pubspec.yaml /tmp/pubspec.yaml.backup
-          echo "=== Backed up files ==="
-          ls -la /tmp/*.backup
 
       - name: Create Flutter project structure (Android)
         run: |
@@ -56,28 +54,13 @@ jobs:
             --platforms=android \
             --project-name=${{ env.PROJECT_NAME }} \
             --org com.moodflow \
-            --no-overwrite \
-            . || flutter create \
-            --platforms=android \
-            --project-name=${{ env.PROJECT_NAME }} \
-            --org com.moodflow \
             .
-        continue-on-error: false
 
       - name: Restore source files
         run: |
           mkdir -p lib
           cp /tmp/main.dart.backup lib/main.dart
           cp /tmp/pubspec.yaml.backup pubspec.yaml
-          echo "=== Restored files ==="
-          ls -la lib/main.dart pubspec.yaml
-
-      - name: Verify Android structure
-        run: |
-          echo "=== Android directory ==="
-          ls -la android/
-          echo "=== build.gradle ==="
-          head -30 android/app/build.gradle || head -30 android/app/build.gradle.kts
 
       - name: Get dependencies
         run: flutter pub get
@@ -122,19 +105,62 @@ jobs:
       - name: Flutter doctor
         run: flutter doctor -v
 
+      - name: Check Visual Studio version
+        shell: pwsh
+        run: |
+          Write-Host "=== Visual Studio Installation ==="
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) {
+            & $vswhere -latest -property installationPath
+            & $vswhere -latest -property catalog_productLineVersion
+          } else {
+            Write-Host "vswhere not found"
+          }
+
       - name: Backup source files
         shell: bash
         run: |
           mkdir -p /tmp/backup
           cp lib/main.dart /tmp/backup/main.dart
           cp pubspec.yaml /tmp/backup/pubspec.yaml
-          echo "=== Backed up files ==="
-          ls -la /tmp/backup/
 
       - name: Create Flutter project structure (Windows)
         run: |
           flutter create --platforms=windows --project-name=${{ env.PROJECT_NAME }} --org com.moodflow .
         continue-on-error: true
+
+      - name: Configure CMake for Visual Studio 2022
+        shell: pwsh
+        run: |
+          $cmakeFile = "windows\CMakeLists.txt"
+          if (Test-Path $cmakeFile) {
+            Write-Host "=== Patching CMakeLists.txt for VS 2022 ==="
+            
+            # Read the file
+            $content = Get-Content $cmakeFile -Raw
+            
+            # Replace Visual Studio 16 2019 with Visual Studio 17 2022
+            $content = $content -replace 'Visual Studio 16 2019', 'Visual Studio 17 2022'
+            
+            # Write back
+            Set-Content $cmakeFile $content -NoNewline
+            
+            Write-Host "CMakeLists.txt patched successfully"
+            Write-Host "=== First 20 lines ==="
+            Get-Content $cmakeFile | Select-Object -First 20
+          } else {
+            Write-Error "CMakeLists.txt not found at $cmakeFile"
+            exit 1
+          }
+
+      - name: Set CMake generator environment variable
+        shell: pwsh
+        run: |
+          echo "CMAKE_GENERATOR=Visual Studio 17 2022" >> $env:GITHUB_ENV
+          echo "CMAKE_GENERATOR_PLATFORM=x64" >> $env:GITHUB_ENV
+          Write-Host "=== Environment Variables ==="
+          Write-Host "CMAKE_GENERATOR=$env:CMAKE_GENERATOR"
+          Write-Host "CMAKE_GENERATOR_PLATFORM=$env:CMAKE_GENERATOR_PLATFORM"
 
       - name: Restore source files
         shell: bash
@@ -142,8 +168,6 @@ jobs:
           mkdir -p lib
           cp /tmp/backup/main.dart lib/main.dart
           cp /tmp/backup/pubspec.yaml pubspec.yaml
-          echo "=== Restored files ==="
-          ls -la lib/main.dart pubspec.yaml
 
       - name: Get dependencies
         run: flutter pub get
@@ -152,20 +176,29 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
         continue-on-error: true
 
+      - name: Clean build directory
+        run: flutter clean
+
       - name: Build Windows (release)
-        run: flutter build windows --release
+        run: flutter build windows --release --verbose
+        env:
+          CMAKE_GENERATOR: Visual Studio 17 2022
+          CMAKE_GENERATOR_PLATFORM: x64
 
       - name: Create portable ZIP
         shell: pwsh
         run: |
           $source = "build\windows\x64\runner\Release"
           $destination = "MoodFlow-Windows-Portable.zip"
+          
           if (Test-Path $source) {
             Compress-Archive -Path "$source\*" -DestinationPath $destination -Force
-            Write-Host "Created: $destination"
-            Get-ChildItem $destination | Select-Object Name, Length
+            Write-Host "✅ Created: $destination"
+            Get-ChildItem $destination | Select-Object Name, @{Name="Size(MB)";Expression={[math]::Round($_.Length/1MB,2)}}
           } else {
-            Write-Error "Windows build directory not found: $source"
+            Write-Error "❌ Windows build directory not found: $source"
+            Write-Host "=== Available directories ==="
+            Get-ChildItem build -Recurse -Directory | Select-Object FullName
             exit 1
           }
 
@@ -211,8 +244,6 @@ jobs:
         run: |
           cp lib/main.dart /tmp/main.dart.backup
           cp pubspec.yaml /tmp/pubspec.yaml.backup
-          echo "=== Backed up files ==="
-          ls -la /tmp/*.backup
 
       - name: Create Flutter project structure (Web)
         run: |
@@ -228,15 +259,6 @@ jobs:
           mkdir -p lib
           cp /tmp/main.dart.backup lib/main.dart
           cp /tmp/pubspec.yaml.backup pubspec.yaml
-          echo "=== Restored files ==="
-          ls -la lib/main.dart pubspec.yaml
-
-      - name: Verify Web structure
-        run: |
-          echo "=== Web directory ==="
-          ls -la web/ || echo "web/ directory not found!"
-          echo "=== index.html ==="
-          head -20 web/index.html || echo "index.html not found!"
 
       - name: Get dependencies
         run: flutter pub get
