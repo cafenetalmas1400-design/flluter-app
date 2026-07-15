@@ -681,22 +681,140 @@ class AppTheme {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Initialize database
   final db = DatabaseService();
   await db.init();
 
+  // Set preferred orientations
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
+  // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: Colors.white,
+      systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
 
   runApp(MoodFlowApp(databaseService: db));
+}
+
+// ============================================================================
+// SPLASH SCREEN
+// ============================================================================
+
+class SplashScreen extends StatefulWidget {
+  final Widget child;
+
+  const SplashScreen({super.key, required this.child});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  bool _showSplash = true;
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _fadeAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+
+    // Show splash for 1.5 seconds then fade out
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        _controller.forward().then((_) {
+          if (mounted) setState(() => _showSplash = false);
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        widget.child,
+        if (_showSplash)
+          FadeTransition(
+            opacity: _fadeAnimation,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF6C5CE7), Color(0xFFA29BFE)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      '🌊',
+                      style: TextStyle(fontSize: 80),
+                    ).animate().scale(
+                          begin: const Offset(0.5, 0.5),
+                          end: const Offset(1.0, 1.0),
+                          duration: 600.ms,
+                          curve: Curves.elasticOut,
+                        ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'MoodFlow',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2,
+                      ),
+                    ).animate().fadeIn(delay: 300.ms, duration: 500.ms),
+                    const SizedBox(height: 8),
+                    Text(
+                      'ردیاب حال و عادت روزانه',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 14,
+                      ),
+                    ).animate().fadeIn(delay: 500.ms, duration: 500.ms),
+                    const SizedBox(height: 40),
+                    SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        valueColor:
+                            AlwaysStoppedAnimation(Colors.white.withOpacity(0.7)),
+                      ),
+                    ).animate().fadeIn(delay: 700.ms),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class MoodFlowApp extends StatefulWidget {
@@ -734,9 +852,11 @@ class _MoodFlowAppState extends State<MoodFlowApp> {
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
         themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
-        home: MainScreen(
-          isDarkMode: _isDarkMode,
-          onToggleTheme: _toggleTheme,
+        home: SplashScreen(
+          child: MainScreen(
+            isDarkMode: _isDarkMode,
+            onToggleTheme: _toggleTheme,
+          ),
         ),
       ),
     );
