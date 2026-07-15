@@ -12,6 +12,7 @@ on:
 env:
   FLUTTER_VERSION: '3.24.5'
   JAVA_VERSION: '17'
+  PROJECT_NAME: 'moodflow'
 
 jobs:
   # ===========================================================================
@@ -46,15 +47,37 @@ jobs:
         run: |
           cp lib/main.dart /tmp/main.dart.backup
           cp pubspec.yaml /tmp/pubspec.yaml.backup
+          echo "=== Backed up files ==="
+          ls -la /tmp/*.backup
 
-      - name: Create Flutter project structure
+      - name: Create Flutter project structure (Android)
         run: |
-          flutter create --platforms=android --org com.moodflow .
-          
+          flutter create \
+            --platforms=android \
+            --project-name=${{ env.PROJECT_NAME }} \
+            --org com.moodflow \
+            --no-overwrite \
+            . || flutter create \
+            --platforms=android \
+            --project-name=${{ env.PROJECT_NAME }} \
+            --org com.moodflow \
+            .
+        continue-on-error: false
+
       - name: Restore source files
         run: |
+          mkdir -p lib
           cp /tmp/main.dart.backup lib/main.dart
           cp /tmp/pubspec.yaml.backup pubspec.yaml
+          echo "=== Restored files ==="
+          ls -la lib/main.dart pubspec.yaml
+
+      - name: Verify Android structure
+        run: |
+          echo "=== Android directory ==="
+          ls -la android/
+          echo "=== build.gradle ==="
+          head -30 android/app/build.gradle || head -30 android/app/build.gradle.kts
 
       - name: Get dependencies
         run: flutter pub get
@@ -63,7 +86,7 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
         continue-on-error: true
 
-      - name: Build APK (release)
+      - name: Build APK (split per ABI)
         run: flutter build apk --release --split-per-abi
 
       - name: Build APK (universal)
@@ -73,8 +96,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: |
-            build/app/outputs/flutter-apk/*.apk
+          path: build/app/outputs/flutter-apk/*.apk
           retention-days: 90
           if-no-files-found: error
 
@@ -103,18 +125,25 @@ jobs:
       - name: Backup source files
         shell: bash
         run: |
-          cp lib/main.dart /tmp/main.dart.backup
-          cp pubspec.yaml /tmp/pubspec.yaml.backup
+          mkdir -p /tmp/backup
+          cp lib/main.dart /tmp/backup/main.dart
+          cp pubspec.yaml /tmp/backup/pubspec.yaml
+          echo "=== Backed up files ==="
+          ls -la /tmp/backup/
 
-      - name: Create Flutter project structure
+      - name: Create Flutter project structure (Windows)
         run: |
-          flutter create --platforms=windows --org com.moodflow .
-          
+          flutter create --platforms=windows --project-name=${{ env.PROJECT_NAME }} --org com.moodflow .
+        continue-on-error: true
+
       - name: Restore source files
         shell: bash
         run: |
-          cp /tmp/main.dart.backup lib/main.dart
-          cp /tmp/pubspec.yaml.backup pubspec.yaml
+          mkdir -p lib
+          cp /tmp/backup/main.dart lib/main.dart
+          cp /tmp/backup/pubspec.yaml pubspec.yaml
+          echo "=== Restored files ==="
+          ls -la lib/main.dart pubspec.yaml
 
       - name: Get dependencies
         run: flutter pub get
@@ -122,9 +151,6 @@ jobs:
       - name: Analyze code
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
         continue-on-error: true
-
-      - name: Enable Windows desktop
-        run: flutter config --enable-windows-desktop
 
       - name: Build Windows (release)
         run: flutter build windows --release
@@ -134,9 +160,14 @@ jobs:
         run: |
           $source = "build\windows\x64\runner\Release"
           $destination = "MoodFlow-Windows-Portable.zip"
-          Compress-Archive -Path "$source\*" -DestinationPath $destination -Force
-          Write-Host "Created: $destination"
-          Get-ChildItem $destination | Select-Object Name, Length
+          if (Test-Path $source) {
+            Compress-Archive -Path "$source\*" -DestinationPath $destination -Force
+            Write-Host "Created: $destination"
+            Get-ChildItem $destination | Select-Object Name, Length
+          } else {
+            Write-Error "Windows build directory not found: $source"
+            exit 1
+          }
 
       - name: Upload Windows portable artifact
         uses: actions/upload-artifact@v4
@@ -180,15 +211,32 @@ jobs:
         run: |
           cp lib/main.dart /tmp/main.dart.backup
           cp pubspec.yaml /tmp/pubspec.yaml.backup
+          echo "=== Backed up files ==="
+          ls -la /tmp/*.backup
 
-      - name: Create Flutter project structure
+      - name: Create Flutter project structure (Web)
         run: |
-          flutter create --platforms=web --org com.moodflow .
-          
+          flutter create \
+            --platforms=web \
+            --project-name=${{ env.PROJECT_NAME }} \
+            --org com.moodflow \
+            .
+        continue-on-error: true
+
       - name: Restore source files
         run: |
+          mkdir -p lib
           cp /tmp/main.dart.backup lib/main.dart
           cp /tmp/pubspec.yaml.backup pubspec.yaml
+          echo "=== Restored files ==="
+          ls -la lib/main.dart pubspec.yaml
+
+      - name: Verify Web structure
+        run: |
+          echo "=== Web directory ==="
+          ls -la web/ || echo "web/ directory not found!"
+          echo "=== index.html ==="
+          head -20 web/index.html || echo "index.html not found!"
 
       - name: Get dependencies
         run: flutter pub get
@@ -247,16 +295,20 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release-files
-
+          
           # Copy APKs
-          cp artifacts/android-apk/*.apk release-files/ 2>/dev/null || true
-
+          cp artifacts/android-apk/*.apk release-files/ 2>/dev/null || echo "No APKs found"
+          
           # Copy Windows ZIP
-          cp artifacts/windows-portable/MoodFlow-Windows-Portable.zip release-files/ 2>/dev/null || true
-
+          cp artifacts/windows-portable/MoodFlow-Windows-Portable.zip release-files/ 2>/dev/null || echo "No Windows ZIP found"
+          
           # Create Web ZIP
-          cd artifacts/web-build && zip -r ../../release-files/MoodFlow-Web.zip . && cd ../..
-
+          if [ -d "artifacts/web-build" ]; then
+            cd artifacts/web-build && zip -r ../../release-files/MoodFlow-Web.zip . && cd ../..
+          else
+            echo "No Web build found"
+          fi
+          
           echo "=== Release Files ==="
           ls -lh release-files/
           echo "====================="
