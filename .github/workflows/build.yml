@@ -42,6 +42,20 @@ jobs:
       - name: Flutter doctor
         run: flutter doctor -v
 
+      - name: Backup source files
+        run: |
+          cp lib/main.dart /tmp/main.dart.backup
+          cp pubspec.yaml /tmp/pubspec.yaml.backup
+
+      - name: Create Flutter project structure
+        run: |
+          flutter create --platforms=android --org com.moodflow .
+          
+      - name: Restore source files
+        run: |
+          cp /tmp/main.dart.backup lib/main.dart
+          cp /tmp/pubspec.yaml.backup pubspec.yaml
+
       - name: Get dependencies
         run: flutter pub get
 
@@ -85,6 +99,22 @@ jobs:
 
       - name: Flutter doctor
         run: flutter doctor -v
+
+      - name: Backup source files
+        shell: bash
+        run: |
+          cp lib/main.dart /tmp/main.dart.backup
+          cp pubspec.yaml /tmp/pubspec.yaml.backup
+
+      - name: Create Flutter project structure
+        run: |
+          flutter create --platforms=windows --org com.moodflow .
+          
+      - name: Restore source files
+        shell: bash
+        run: |
+          cp /tmp/main.dart.backup lib/main.dart
+          cp /tmp/pubspec.yaml.backup pubspec.yaml
 
       - name: Get dependencies
         run: flutter pub get
@@ -145,6 +175,20 @@ jobs:
 
       - name: Flutter doctor
         run: flutter doctor -v
+
+      - name: Backup source files
+        run: |
+          cp lib/main.dart /tmp/main.dart.backup
+          cp pubspec.yaml /tmp/pubspec.yaml.backup
+
+      - name: Create Flutter project structure
+        run: |
+          flutter create --platforms=web --org com.moodflow .
+          
+      - name: Restore source files
+        run: |
+          cp /tmp/main.dart.backup lib/main.dart
+          cp /tmp/pubspec.yaml.backup pubspec.yaml
 
       - name: Get dependencies
         run: flutter pub get
